@@ -2,23 +2,24 @@
 
 Evaluate prompts, models, and LLM providers using reproducible benchmarks.
 
-## Features
+## What it provides
 
-- `BenchmarkRunner` for executing benchmark datasets against pluggable model providers
-- `PromptTemplate` objects for reusable prompt rendering
-- `BenchmarkDataset` and `BenchmarkCase` models for structured benchmark inputs
-- `EvaluationMetric` hooks for configurable scoring
-- `JsonlResultStore` for append-only structured run storage
-- `uv`-managed development workflow with Ruff, Pyright, pytest, pre-commit, and GitHub Actions
+- Structured benchmark inputs with `BenchmarkDataset` and `BenchmarkCase`
+- Reusable templates with `PromptTemplate`
+- Pluggable providers via the `ModelProvider` protocol
+- Pluggable metrics via the `EvaluationMetric` protocol
+- End-to-end execution and aggregation with `BenchmarkRunner`
+- Optional JSONL persistence with `JsonlResultStore`
 
-## Quick start
+## Installation
+
+This project targets Python 3.12+ and uses `uv` for local development.
 
 ```bash
 uv sync --dev
-uv run pytest
-uv run ruff check .
-uv run pyright
 ```
+
+## Quick start
 
 ```python
 from prompt_benchmark import (
@@ -31,65 +32,82 @@ from prompt_benchmark import (
 )
 
 
-class EchoProvider:
-    name = "echo"
+class EchoExpectedProvider:
+    name = "echo-expected"
 
-    def generate(self, prompt: str, *, case: BenchmarkCase, template: PromptTemplate) -> ProviderResponse:
-        del template
-        return ProviderResponse(output=prompt, metadata={"case_id": case.case_id})
+    def generate(
+        self,
+        prompt: str,
+        *,
+        case: BenchmarkCase,
+        template: PromptTemplate,
+    ) -> ProviderResponse:
+        # This provider ignores the rendered prompt and returns expected output.
+        del prompt, template
+        return ProviderResponse(output=case.expected_output or "")
 
 
 dataset = BenchmarkDataset.from_cases(
-    "demo",
+    "greetings",
     [
-        BenchmarkCase(case_id="1", input_variables={"name": "Ada"}, expected_output="Hello Ada!"),
+        BenchmarkCase(
+            case_id="case-1",
+            input_variables={"name": "Ada"},
+            expected_output="Hello Ada!",
+        ),
+        BenchmarkCase(
+            case_id="case-2",
+            input_variables={"name": "Grace"},
+            expected_output="Hello Grace!",
+        ),
     ],
 )
-template = PromptTemplate(name="greeting", template="Hello {name}!")
+
+template = PromptTemplate(name="hello-template", template="Hello {name}!")
 runner = BenchmarkRunner(metrics=[ExactMatchMetric()])
-result = runner.run(dataset=dataset, provider=EchoProvider(), template=template)
 
-print(result.summary_metrics)
+result = runner.run(
+    dataset=dataset,
+    provider=EchoExpectedProvider(),
+    template=template,
+    run_id="demo-run",
+)
+
+print(result.summary_metrics)  # {'exact_match': 1.0}
 ```
-This project focuses on making prompt performance measurable, reproducible, and analyzable.
 
-## Overview
+## Core concepts
 
-Prompt engineering is often informal and inconsistent. This tool introduces structured benchmarking to evaluate:
+### 1. Provider interface
 
-- prompt effectiveness
-- consistency across runs
-- model sensitivity
-- task-specific performance
+Implement a provider by exposing:
 
-## Features
+- `name: str`
+- `generate(prompt, *, case, template) -> ProviderResponse`
 
-- Standardized prompt evaluation harness
-- Multi-model testing support
-- Scoring and evaluation metrics
-- Repeatable experiment definitions
-- Output comparison tools
+The runner renders each case using the template, then calls your provider.
 
-## Benchmark Dimensions
+### 2. Metric interface
 
-- Accuracy / correctness
-- Consistency
-- Robustness to variation
-- Token efficiency
-- Structured output compliance
+Implement a metric by exposing:
 
-## Example Use Cases
+- `name: str`
+- `evaluate(*, case, prompt, response) -> MetricResult`
 
-- Comparing prompt variants
-- Evaluating model upgrades
-- Testing agent prompt reliability
-- Research into prompt sensitivity
+`ExactMatchMetric` is included as a baseline metric.
 
-## Design Philosophy
+### 3. Result persistence
 
-- Treat prompts as experimental variables
-- Emphasize reproducibility
-- Separate evaluation from generation
+Pass `JsonlResultStore(path)` to `BenchmarkRunner` to append each run as one JSON line.
+
+## Development
+
+```bash
+uv sync --dev
+uv run pytest
+uv run ruff check .
+uv run pyright
+```
 
 ## License
 
