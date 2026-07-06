@@ -43,4 +43,4 @@ Prompt engineering is often informal and inconsistent. This tool introduces stru
 
 ## License
 
-MIT
+Apache 2.0
